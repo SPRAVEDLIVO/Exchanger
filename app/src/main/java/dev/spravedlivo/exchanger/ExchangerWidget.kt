@@ -3,16 +3,21 @@ package dev.spravedlivo.exchanger
 import android.content.Context
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.glance.Button
+import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceComposable
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.GlanceTheme
 import androidx.glance.action.Action
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
+import androidx.glance.action.actionStartActivity
+import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.ActionCallback
@@ -25,11 +30,11 @@ import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import io.ktor.client.call.body
-import io.ktor.client.request.get
+import kotlinx.coroutines.flow.firstOrNull
 
 
 class MyAppWidgetReceiver : GlanceAppWidgetReceiver() {
@@ -38,12 +43,15 @@ class MyAppWidgetReceiver : GlanceAppWidgetReceiver() {
 
 
 object ExchangerWidget : GlanceAppWidget() {
-    // TODO initial
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-
-        provideContent {
-            WidgetContent(context)
+        updateAppWidgetState(context, id) { prefs ->
+            val data = context.dataStore.data.firstOrNull() ?: return@updateAppWidgetState
+            prefs[favouritesKey] = data[favouritesKey] ?: setOf()
         }
+        provideContent {
+            WidgetContent(context, id)
+        }
+
     }
     private fun actionGenerator(text: String): Action {
         return actionRunCallback(TypeCallback.javaClass, actionParametersOf(ActionParameters.Key<String>("updateText") to text))
@@ -55,33 +63,42 @@ object ExchangerWidget : GlanceAppWidget() {
 
     @Composable
     @GlanceComposable
-    fun WidgetContent(context: Context) {
-
+    fun WidgetContent(context: Context, id: GlanceId) {
         val text = currentState(textKey)
         val favourites = currentState(favouritesKey)
         val selectedExchange = currentState(selectedExchangeKey)
         val exchanged = currentState(exchangedKey)
-
+        if (favourites == null) LaunchedEffect(Unit) {
+            ExchangerWidget.update(context, id)
+        }
         Column(
             modifier = GlanceModifier.fillMaxSize(),
             verticalAlignment = Alignment.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
+            Text(favouritesKeyToReadable(selectedExchange) ?: "Nothing selected", modifier =
+                GlanceModifier.clickable(actionStartActivity<MainActivity>()))
             favourites?.forEach {
-
-                Button(text = it.replace("_", " → "),
+                Button(text = favouritesKeyToReadable(it)!!,
                         onClick = actionRunCallback(
                             ChooseExchange.javaClass,
                             actionParametersOf(
                                 ActionParameters.Key<String>("currency") to it
                             )))
             }
-            if (selectedExchange != null && !text.isNullOrBlank()) {
-                Button(text = "go", onClick = actionRunCallback(ExchangeButtonAction.javaClass))
+            val disabled = selectedExchange == null || text.isNullOrBlank()
+            val colors = if (disabled)
+                ButtonDefaults.buttonColors(backgroundColor = GlanceTheme.colors.secondary)
+            else ButtonDefaults.buttonColors()
+            val action1 = if (disabled) actionRunCallback(Noop.javaClass) else actionRunCallback(ExchangeButtonAction.javaClass)
+            val action2 = if (disabled) actionRunCallback(Noop.javaClass) else actionRunCallback(ReverseCallback.javaClass)
+            Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Top,
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(text = "go", onClick = action1, colors = colors)
+                Button(text = "rev", onClick = action2, colors = colors)
             }
-            if (exchanged != null) Text(exchanged, style = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary)))
-            if (text != null) Text(text, style = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary)))
+            Text(exchanged ?: "", style = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary)))
+            Text(text ?: "", style = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary)))
 
             Column {
                 var count = 1
@@ -105,9 +122,31 @@ object ExchangerWidget : GlanceAppWidget() {
                     Button(text = ".", onClick = actionGenerator("."))
                 }
             }
-
-
         }
+    }
+}
+
+object Noop: ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+
+    }
+}
+
+object ReverseCallback : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        updateAppWidgetState(context, glanceId) { prefs ->
+            val values = fromFavouritesKey(prefs[ExchangerWidget.selectedExchangeKey]!!)
+            prefs[ExchangerWidget.selectedExchangeKey] = favouritesKey(values.second, values.first)
+        }
+        ExchangerWidget.update(context, glanceId)
     }
 }
 
@@ -119,24 +158,26 @@ object ExchangeButtonAction : ActionCallback {
     ) {
         val prefs: MutablePreferences = ExchangerWidget.getAppWidgetState(glanceId=glanceId, context = context)
         val read = prefs[ExchangerWidget.selectedExchangeKey]
-        var amount = prefs[ExchangerWidget.textKey]
-        println(read)
-        println(amount)
+        val amount = prefs[ExchangerWidget.textKey]
         if (read != null && amount != null) {
-            val split = read.split("_")
-            if (amount.endsWith(".")) amount = amount.substring(0, read.length)
-            val rates = client.get("${API_URL}/latest/currencies/${split[0]}/${split[1]}.json").body<String>().trim().replace("\n", "").replace(" ", "")
-            val need = rates.split("${split[1]}\":")[1].replace("}", "")
-            println(rates)
+            val split = fromFavouritesKey(read)
+            val need =
+                ExchangeApi.getRate(split.first, split.second)
+                    ?: return failure(context, glanceId)
             updateAppWidgetState(context, glanceId) { newPrefs ->
-                println(need!!.toFloat() * amount.toFloat())
-                newPrefs[ExchangerWidget.exchangedKey] = if (need != null) (need.toFloat() * amount.toFloat()).toString() else "Error"
+                newPrefs[ExchangerWidget.exchangedKey] = "%.2f".format((need * amount.toFloat()))
             }
             ExchangerWidget.update(context, glanceId)
         }
+        else return failure(context, glanceId)
 
     }
-
+    private suspend fun failure(context: Context, glanceId: GlanceId) {
+        updateAppWidgetState(context, glanceId) { newPrefs ->
+            newPrefs[ExchangerWidget.exchangedKey] = "Error"
+        }
+        ExchangerWidget.update(context, glanceId)
+    }
 }
 
 

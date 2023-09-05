@@ -51,7 +51,7 @@ class MainScreenViewModel : ViewModel() {
     }
     fun updateExchangeTo(exchangeTo: String) {
         _state.update { currentState ->
-            currentState.copy(exchangeFrom = exchangeTo)
+            currentState.copy(exchangeTo = exchangeTo)
         }
     }
     fun swapExchanges() {

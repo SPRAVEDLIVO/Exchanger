@@ -2,11 +2,11 @@ package dev.spravedlivo.exchanger
 
 import android.content.Context
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,22 +37,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.spravedlivo.exchanger.ui.theme.ExchangerTheme
 import dev.spravedlivo.exchanger.viewmodel.MainScreenViewModel
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.android.Android
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.get
-import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.json.Json
 
-const val API_URL = "https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1"
-val client = HttpClient(Android) {
-    install(ContentNegotiation) {
-        json(Json {
-            prettyPrint = true
-        })
-    }
-}
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "prefs")
 class MainActivity : ComponentActivity() {
@@ -69,6 +54,15 @@ fun favouritesKey(from: String, to: String): String {
     return "${from}_${to}"
 }
 
+fun fromFavouritesKey(key: String): Pair<String, String> {
+    val split = key.split("_")
+    return split[0] to split[1]
+}
+
+fun favouritesKeyToReadable(key: String?): String? {
+    return key?.replace("_", " → ")
+}
+
 @Composable
 fun ExchangerApp(context: Context) {
     ExchangerTheme {
@@ -80,9 +74,14 @@ fun ExchangerApp(context: Context) {
             val viewModel = viewModel<MainScreenViewModel>()
             val state by viewModel.state.collectAsState()
             if (!state.loaded) {
+                Text(text = "Loading rates")
                 val exchangeOptions = mutableListOf<String>()
                 LaunchedEffect(Unit) {
-                    val received : Map<String, String> = client.get("$API_URL/latest/currencies.json").body()
+                    val received : Map<String, String>? = ExchangeApi.getRates()
+                    if (received == null) {
+                        Toast.makeText(context, "Unable to fetch rates", Toast.LENGTH_LONG).show()
+                        return@LaunchedEffect
+                    }
                     received.entries.map { exchangeOptions.add("${it.key} (${it.value})") }
                     viewModel.updateLoaded(true, exchangeOptions, Settings.readStringSetKey(context, "favourites", setOf())!!)
                 }
