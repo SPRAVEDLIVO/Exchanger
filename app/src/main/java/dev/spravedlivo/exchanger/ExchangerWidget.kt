@@ -64,6 +64,7 @@ object ExchangerWidget : GlanceAppWidget() {
     @Composable
     @GlanceComposable
     fun WidgetContent(context: Context, id: GlanceId) {
+        val textStyle = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary))
         val text = currentState(textKey)
         val favourites = currentState(favouritesKey)
         val selectedExchange = currentState(selectedExchangeKey)
@@ -77,7 +78,7 @@ object ExchangerWidget : GlanceAppWidget() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(favouritesKeyToReadable(selectedExchange) ?: "Nothing selected", modifier =
-                GlanceModifier.clickable(actionStartActivity<MainActivity>()))
+                GlanceModifier.clickable(actionStartActivity<MainActivity>()), style = textStyle)
             favourites?.forEach {
                 Button(text = favouritesKeyToReadable(it)!!,
                         onClick = actionRunCallback(
@@ -97,8 +98,8 @@ object ExchangerWidget : GlanceAppWidget() {
                 Button(text = "go", onClick = action1, colors = colors)
                 Button(text = "rev", onClick = action2, colors = colors)
             }
-            Text(exchanged ?: "", style = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary)))
-            Text(text ?: "", style = TextStyle(color = ColorProvider(MaterialTheme.colorScheme.inversePrimary)))
+            Text(exchanged ?: "", style = textStyle)
+            Text(text ?: "", style = textStyle)
 
             Column {
                 var count = 1
