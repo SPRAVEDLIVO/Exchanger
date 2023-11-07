@@ -88,7 +88,7 @@ fun ExchangerApp(context: Context) {
             }
             else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         EditableDropdownMenu(
                             options = state.exchangeOptions,
                             selectedOptionText = state.exchangeFrom,
