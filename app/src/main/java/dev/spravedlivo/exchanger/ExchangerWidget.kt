@@ -87,7 +87,7 @@ object ExchangerWidget : GlanceAppWidget() {
                                 ActionParameters.Key<String>("currency") to it
                             )))
             }
-            val disabled = selectedExchange == null || text.isNullOrBlank()
+            val disabled = selectedExchange == null || text.isNullOrBlank() || text == "."
             val colors = if (disabled)
                 ButtonDefaults.buttonColors(backgroundColor = GlanceTheme.colors.secondary)
             else ButtonDefaults.buttonColors()

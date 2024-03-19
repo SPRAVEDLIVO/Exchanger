@@ -6,6 +6,7 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.spravedlivo.exchanger.ExchangeApi
 import dev.spravedlivo.exchanger.ExchangerWidget
 import dev.spravedlivo.exchanger.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,7 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class MainScreenState(val exchangeFrom: String, val exchangeTo: String, val loaded: Boolean = false, val exchangeOptions: List<String> = listOf(), val favourites: Set<String> = setOf())
+data class MainScreenState(val exchangeFrom: String, val exchangeTo: String, val loaded: Boolean = false, val exchangeOptions: List<String> = listOf(), val favourites: Set<String> = setOf(), val error: String? = null)
 
 class MainScreenViewModel : ViewModel() {
     private val _state = MutableStateFlow(MainScreenState("usd", "rub"))
@@ -24,10 +25,22 @@ class MainScreenViewModel : ViewModel() {
         }
     }
 
-    fun updateLoaded(loaded: Boolean, exchangeOptions: List<String>, favourites: Set<String>) {
-        _state.update { currentState ->
-            currentState.copy(loaded = loaded, exchangeOptions = exchangeOptions, favourites = favourites)
+    fun loadRates(context: Context) {
+        viewModelScope.launch {
+            val received : Map<String, String>? = ExchangeApi.getRates()
+            val exchangeOptions = mutableListOf<String>()
+            if (received == null) {
+                _state.update { currentState ->
+                    currentState.copy(loaded = true, error = "Unable to fetch rates")
+                }
+                return@launch
+            }
+            received.entries.map { exchangeOptions.add("${it.key} (${it.value})") }
+            _state.update { currentState ->
+                currentState.copy(loaded = true, exchangeOptions = exchangeOptions, favourites = Settings.readStringSetKey(context, "favourites", setOf())!!)
+            }
         }
+
     }
     fun updateFavourites(context: Context, key: String) {
         _state.update { currentState ->

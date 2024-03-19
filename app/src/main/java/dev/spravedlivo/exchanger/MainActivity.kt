@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.datastore.core.DataStore
@@ -73,18 +74,16 @@ fun ExchangerApp(context: Context) {
         ) {
             val viewModel = viewModel<MainScreenViewModel>()
             val state by viewModel.state.collectAsState()
+            var loading by remember { mutableStateOf(false) }
+            if (!loading) {
+                loading = true
+                viewModel.loadRates(context)
+            }
             if (!state.loaded) {
                 Text(text = "Loading rates")
-                val exchangeOptions = mutableListOf<String>()
-                LaunchedEffect(Unit) {
-                    val received : Map<String, String>? = ExchangeApi.getRates()
-                    if (received == null) {
-                        Toast.makeText(context, "Unable to fetch rates", Toast.LENGTH_LONG).show()
-                        return@LaunchedEffect
-                    }
-                    received.entries.map { exchangeOptions.add("${it.key} (${it.value})") }
-                    viewModel.updateLoaded(true, exchangeOptions, Settings.readStringSetKey(context, "favourites", setOf())!!)
-                }
+            }
+            else if (state.error != null) {
+                Text(text = state.error!!)
             }
             else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -92,7 +91,8 @@ fun ExchangerApp(context: Context) {
                         EditableDropdownMenu(
                             options = state.exchangeOptions,
                             selectedOptionText = state.exchangeFrom,
-                            updateSelectedOptionText = { viewModel.updateExchangeFrom(it) }
+                            updateSelectedOptionText = { viewModel.updateExchangeFrom(it) },
+                            labelText = "From"
                         )
                         Button(onClick = { viewModel.swapExchanges() }) {
                             Text(text = "Swap")
@@ -100,14 +100,15 @@ fun ExchangerApp(context: Context) {
                         EditableDropdownMenu(
                             options = state.exchangeOptions,
                             selectedOptionText = state.exchangeTo,
-                            updateSelectedOptionText = { viewModel.updateExchangeTo(it) }
+                            updateSelectedOptionText = { viewModel.updateExchangeTo(it) },
+                            labelText = "To"
                         )
 
                         Image(painterResource(id = (if (state.favourites.contains(favouritesKey(state.exchangeFrom, state.exchangeTo))) R.drawable.star_svgrepo_com_full else R.drawable.star_svgrepo_com))
                             , contentDescription = "",
                             modifier = Modifier.clickable {
                                 viewModel.updateFavourites(context, favouritesKey(state.exchangeFrom, state.exchangeTo))
-                            })
+                            }, colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground))
                     }
                 }
             }
@@ -118,14 +119,14 @@ fun ExchangerApp(context: Context) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditableDropdownMenu(options: List<String>, selectedOptionText: String, updateSelectedOptionText: (String) -> Unit) {
+fun EditableDropdownMenu(options: List<String>, selectedOptionText: String, updateSelectedOptionText: (String) -> Unit, labelText: String) {
     var expanded by remember { mutableStateOf(false) }
 
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded}) {
         TextField(
             value = selectedOptionText,
             onValueChange = { updateSelectedOptionText(it) },
-            label = { Text("Label") },
+            label = { Text(labelText) },
             singleLine = true,
             trailingIcon = {
                 ExposedDropdownMenuDefaults.TrailingIcon(

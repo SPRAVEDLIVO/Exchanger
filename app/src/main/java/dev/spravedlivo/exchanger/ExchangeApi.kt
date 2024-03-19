@@ -10,7 +10,7 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
 object ExchangeApi {
-    const val API_URL = "https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1"
+    const val API_URL = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api"
     val client = HttpClient(Android) {
         install(ContentNegotiation) {
             json(Json {
@@ -19,12 +19,12 @@ object ExchangeApi {
         }
     }
     suspend fun getRate(from: String, to: String): Float? {
-        val response = client.get("${API_URL}/latest/currencies/${from}/${to}.json")
+        val response = client.get("$API_URL@latest/v1/currencies/${from}.json")
         if (!response.status.isSuccess()) return null
-        return response.body<String>().trim().replace("\n", "").replace(" ", "").split("${to}\":")[1].replace("}", "").toFloat()
+        return response.body<String>().trim().replace("\n", "").replace(" ", "").split("${to}\":")[1].split(",")[0].replace("}", "").toFloat()
     }
     suspend fun getRates(): Map<String, String>? {
-        val response = client.get("$API_URL/latest/currencies.json")
+        val response = client.get("$API_URL@latest/v1/currencies.json")
         if (!response.status.isSuccess()) return null
         return response.body()
     }
